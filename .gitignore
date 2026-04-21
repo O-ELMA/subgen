@@ -1,0 +1,11 @@
+.mp3
+*.mp3
+.srt
+*.srt
+.json
+*.json
+.csv
+*.csv
+AMJ
+output
+.env
