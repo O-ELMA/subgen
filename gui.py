@@ -280,7 +280,7 @@ class App(ctk.CTk):
         )
         self.folder_drop_label = ctk.CTkLabel(
             self.folder_drop_frame,
-            text="Drop a folder here or click to browse",
+            text="Click here to browse folders",
             font=_font(size=14),
             text_color=THEME["text_secondary"],
             wraplength=300,
@@ -359,7 +359,7 @@ class App(ctk.CTk):
         )
         self.files_drop_label = ctk.CTkLabel(
             self.files_drop_frame,
-            text="Drop audio/video files here or click to browse",
+            text="Click here to browse audio/video files",
             font=_font(size=14),
             text_color=THEME["text_secondary"],
             wraplength=300,
