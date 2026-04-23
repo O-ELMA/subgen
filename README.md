@@ -17,7 +17,7 @@ AI-powered subtitle generation from audio/video files, with a focus on Islamic c
 
 ### Windows
 
-1. Install [Python 3.12](https://www.python.org/downloads/windows/)
+1. Install [Python 3.12](https://www.python.org/downloads/release/pymanager-261/)
 
 2. Install [FFMPEG](https://www.youtube.com/watch?v=K7znsMo_48I)
 

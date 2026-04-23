@@ -1,14 +1,29 @@
 import os
 import platform
 import sys
-import threading
+import multiprocessing
 import queue
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
 try:
+    import tkinter
     import tkinterdnd2
     TKDND_AVAILABLE = True
+    # tkinterdnd2 patches BaseWidget, but tkinter.Tk doesn't inherit from
+    # BaseWidget in Python 3 (it inherits Misc + Wm). Copy the DnD hooks
+    # onto Misc so they're available on CTk and all other widgets.
+    _DND_ATTRS = [
+        '_subst_format_dnd', '_subst_format_str_dnd', '_substitute_dnd',
+        '_dnd_bind', 'dnd_bind', 'drag_source_register',
+        'drag_source_unregister', 'drop_target_register',
+        'drop_target_unregister', 'platform_independent_types',
+        'platform_specific_types', 'get_dropfile_tempdir',
+        'set_dropfile_tempdir',
+    ]
+    for _attr in _DND_ATTRS:
+        if hasattr(tkinter.BaseWidget, _attr) and not hasattr(tkinter.Misc, _attr):
+            setattr(tkinter.Misc, _attr, getattr(tkinter.BaseWidget, _attr))
 except ImportError:
     TKDND_AVAILABLE = False
 
@@ -170,12 +185,55 @@ def _collect_files(path, filter_mode):
     return []
 
 
+def _estimate_processing_time(path):
+    """Estimate processing time in seconds (3 min processing per 1 min audio)."""
+    try:
+        from pydub.utils import mediainfo_json
+        info = mediainfo_json(path)
+        duration_sec = float(info["format"]["duration"])
+        return int(duration_sec * 3)
+    except Exception:
+        return 0
+
+
+def _transcribe_worker(files, result_queue, stop_event, total_files):
+    for idx, path in enumerate(files):
+        if stop_event.is_set():
+            result_queue.put(("stopped", None))
+            return
+
+        estimated_sec = _estimate_processing_time(path)
+        result_queue.put(("file_start", {"idx": idx + 1, "total": total_files, "path": path, "estimated_sec": estimated_sec}))
+
+        try:
+            elapsed, merged = transcribe(
+                path,
+                progress_callback=lambda data, q=result_queue: q.put(("progress", data)),
+                stop_event=stop_event
+            )
+            result_queue.put(("file_done", {"path": path, "elapsed": elapsed}))
+        except InterruptedError:
+            result_queue.put(("stopped", None))
+            return
+        except Exception as e:
+            result_queue.put(("error", {"path": path, "error": str(e)}))
+
+    result_queue.put(("all_done", None))
+
+
 # =============================================================================
 # APP
 # =============================================================================
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
+
+        # Ensure tkdnd Tcl package is loaded (required when not inheriting from TkinterDnD.Tk)
+        if TKDND_AVAILABLE:
+            try:
+                tkinterdnd2.TkinterDnD._require(self)
+            except Exception:
+                pass
 
         self.title("SUBGEN - AI Subtitle Generator")
         self.geometry("1100x850")
@@ -189,8 +247,9 @@ class App(ctk.CTk):
         self.selected_files = []
         self.filter_mode = "Both"     # "Audio", "Video", or "Both"
         self.is_running = False
-        self.stop_event = threading.Event()
-        self.queue = queue.Queue()
+        self.stop_event = None
+        self.queue = None
+        self.worker_process = None
         self.current_file_idx = 0
         self.total_files = 0
         self.timer_id = None
@@ -280,7 +339,7 @@ class App(ctk.CTk):
         )
         self.folder_drop_label = ctk.CTkLabel(
             self.folder_drop_frame,
-            text="Click here to browse folders",
+            text="Drop a folder here or click to browse",
             font=_font(size=14),
             text_color=THEME["text_secondary"],
             wraplength=300,
@@ -359,7 +418,7 @@ class App(ctk.CTk):
         )
         self.files_drop_label = ctk.CTkLabel(
             self.files_drop_frame,
-            text="Click here to browse audio/video files",
+            text="Drop audio/video files here or click to browse",
             font=_font(size=14),
             text_color=THEME["text_secondary"],
             wraplength=300,
@@ -566,15 +625,10 @@ class App(ctk.CTk):
         # Drag and drop
         if TKDND_AVAILABLE:
             try:
-                self.drop_target_register(tkdnd2.DND_FILES)
+                self.drop_target_register(tkinterdnd2.DND_FILES)
                 self.dnd_bind('<<Drop>>', self._on_drop)
-            except Exception:
-                try:
-                    self.tk.eval('package require tkdnd')
-                    self.tk.call('dnd', 'bindtarget', self._w, 'DND_Files', '<Drop>')
-                    self.bind('<<Drop:DND_Files>>', self._on_drop)
-                except Exception as e:
-                    self._log(f"Drag and drop initialization failed: {e}")
+            except Exception as e:
+                self._log(f"Drag and drop initialization failed: {e}")
 
     # ------------------------------------------------------------------
     # Mode switching
@@ -882,9 +936,8 @@ class App(ctk.CTk):
             messagebox.showerror("Error", "No files to process.")
             return
 
-        self.is_running = True
-        self._set_ui_locked(True)
-        self.stop_event.clear()
+        self.queue = multiprocessing.Queue()
+        self.stop_event = multiprocessing.Event()
         self.current_file_idx = 0
         self.total_files = len(files_to_process)
 
@@ -900,78 +953,58 @@ class App(ctk.CTk):
 
         self._log(f"Starting transcription of {self.total_files} file(s)...")
 
-        thread = threading.Thread(
-            target=self._transcribe_worker,
-            args=(files_to_process,),
-            daemon=True
-        )
-        thread.start()
+        os.environ["_SUBGEN_WORKER"] = "1"
+        try:
+            self.worker_process = multiprocessing.Process(
+                target=_transcribe_worker,
+                args=(files_to_process, self.queue, self.stop_event, self.total_files),
+                daemon=True,
+            )
+            self.worker_process.start()
+        finally:
+            del os.environ["_SUBGEN_WORKER"]
 
-    def _transcribe_worker(self, files):
-        for idx, path in enumerate(files):
-            if self.stop_event.is_set():
-                self.queue.put(("stopped", None))
-                return
-
-            self.current_file_idx = idx + 1
-            estimated_sec = self._estimate_processing_time(path)
-            self.queue.put(("file_start", {"idx": idx + 1, "total": len(files), "path": path, "estimated_sec": estimated_sec}))
-
-            try:
-                elapsed, merged = transcribe(
-                    path,
-                    progress_callback=self._progress_callback,
-                    stop_event=self.stop_event
-                )
-                self.queue.put(("file_done", {"path": path, "elapsed": elapsed}))
-            except InterruptedError:
-                self.queue.put(("stopped", None))
-                return
-            except Exception as e:
-                self.queue.put(("error", {"path": path, "error": str(e)}))
-
-        self.queue.put(("all_done", None))
-
-    def _progress_callback(self, data):
-        self.queue.put(("progress", data))
+        self.is_running = True
+        self._set_ui_locked(True)
 
     def _poll_queue(self):
-        try:
-            while True:
-                msg_type, data = self.queue.get_nowait()
+        if self.is_running and self.queue is not None:
+            try:
+                while True:
+                    msg_type, data = self.queue.get_nowait()
 
-                if msg_type == "file_start":
-                    self.status_label.configure(
-                        text=f"Processing {data['idx']}/{data['total']}: {os.path.basename(data['path'])}",
-                        text_color=THEME["accent_teal"],
-                    )
-                    self.current_progress_bar.set(0)
-                    self._log(f"[{data['idx']}/{data['total']}] Processing: {os.path.basename(data['path'])}")
-                    self._start_timer(data.get("estimated_sec", 0))
+                    if msg_type == "file_start":
+                        self.status_label.configure(
+                            text=f"Processing {data['idx']}/{data['total']}: {os.path.basename(data['path'])}",
+                            text_color=THEME["accent_teal"],
+                        )
+                        self.current_progress_bar.set(0)
+                        self._log(f"[{data['idx']}/{data['total']}] Processing: {os.path.basename(data['path'])}")
+                        self._start_timer(data.get("estimated_sec", 0))
 
-                elif msg_type == "progress":
-                    self._handle_progress(data)
+                    elif msg_type == "progress":
+                        self._handle_progress(data)
 
-                elif msg_type == "file_done":
-                    self._stop_timer()
-                    self.overall_progress_bar.set(self.current_file_idx / self.total_files)
-                    self._log(f"✅ Done: {os.path.basename(data['path'])} ({data['elapsed']:.1f} min)")
-                    self._show_notification(data['path'])
+                    elif msg_type == "file_done":
+                        self._stop_timer()
+                        self.overall_progress_bar.set(self.current_file_idx / self.total_files)
+                        self._log(f"✅ Done: {os.path.basename(data['path'])} ({data['elapsed']:.1f} min)")
+                        self._show_notification(data['path'])
 
-                elif msg_type == "error":
-                    self._stop_timer()
-                    self._log(f"ERROR: {os.path.basename(data['path'])} - {data['error']}")
+                    elif msg_type == "error":
+                        self._stop_timer()
+                        self._log(f"ERROR: {os.path.basename(data['path'])} - {data['error']}")
 
-                elif msg_type == "all_done":
-                    self._stop_timer()
-                    self._finish_transcription("All done!")
+                    elif msg_type == "all_done":
+                        self._stop_timer()
+                        self._finish_transcription("All done!")
 
-                elif msg_type == "stopped":
-                    self._stop_timer()
-                    self._finish_transcription("Stopped by user.")
+                    elif msg_type == "stopped":
+                        self._stop_timer()
+                        self._finish_transcription("Stopped by user.")
 
-        except queue.Empty:
-            pass
+            except queue.Empty:
+                pass
 
         self.after(100, self._poll_queue)
 
@@ -1004,22 +1037,21 @@ class App(ctk.CTk):
         self.stop_button.configure(state="disabled")
         self.status_label.configure(text=status_msg, text_color=THEME["text_primary"])
         self._log(status_msg)
+        if self.worker_process is not None:
+            if self.worker_process.is_alive():
+                self.worker_process.terminate()
+                self.worker_process.join(timeout=1)
+            self.worker_process = None
+        self._stop_timer()
 
     def _stop_transcription(self):
         if self.is_running:
             self.stop_event.set()
-            self.status_label.configure(text="Stopping...", text_color=THEME["accent_pink"])
-            self._log("Stop requested by user...")
-
-    def _estimate_processing_time(self, path):
-        """Estimate processing time in seconds (3 min processing per 1 min audio)."""
-        try:
-            from pydub.utils import mediainfo_json
-            info = mediainfo_json(path)
-            duration_sec = float(info["format"]["duration"])
-            return int(duration_sec * 3)
-        except Exception:
-            return 0
+            if self.worker_process and self.worker_process.is_alive():
+                self.worker_process.terminate()
+                self.worker_process.join(timeout=1)
+            self._stop_timer()
+            self._finish_transcription("Stopped by user.")
 
     def _start_timer(self, estimated_sec):
         self._stop_timer()
@@ -1114,4 +1146,8 @@ def run_gui():
 
 
 if __name__ == "__main__":
-    run_gui()
+    if os.environ.get("_SUBGEN_WORKER"):
+        # Inside a multiprocessing worker process; do not start the GUI.
+        pass
+    else:
+        run_gui()
