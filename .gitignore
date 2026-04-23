@@ -9,3 +9,7 @@
 AMJ
 output
 .env
+__pycache__
+dist
+build
+models
