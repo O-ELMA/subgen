@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 set -e
 
+if [ ! -f .env ]; then
+  echo "Paste your NanoGPT API key (leave empty to skip):"
+  read -r USER_KEY
+
+  if [ -n "$USER_KEY" ]; then
+    echo "NANO_GPT_KEY=$USER_KEY" > .env
+  else
+    echo "NANO_GPT_KEY=" > .env
+  fi
+fi
+
 PYTHON_CMD=""
 for cmd in python3.12 python3 python; do
     if command -v "$cmd" >/dev/null 2>&1; then
