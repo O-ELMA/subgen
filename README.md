@@ -15,29 +15,20 @@ AI-powered subtitle generation from audio/video files, with a focus on Islamic c
 ## 💻 Installation
 
 
+### Windows
+
+1. Install [Python 3.12](https://www.python.org/downloads/windows/)
+
+2. Install [FFMPEG](https://www.youtube.com/watch?v=K7znsMo_48I)
+
+3. Double-click **`start.bat`** to start using the application
+
 ### Linux / macOS
 
-- Install Python and FFMPEG
+- Install Python and FFMPEG, then run:
 
 ```bash
 ./linux_install.sh
-```
-
-The script will:
-- Prompt for your NanoGPT API key (stored in `.env`)
-- Create a virtual environment (`.venv`)
-- Install all dependencies + `qwen-asr`
-- Use `uv` if available for faster installs
-
-### Windows
-
-- First, install [Python 3.12](https://www.python.org/downloads/windows/)
-
-- Second, install [FFMPEG](https://www.youtube.com/watch?v=K7znsMo_48I)
-
-- Then double-click:
-```cmd
-windows_install.bat
 ```
 
 ### Manually
@@ -58,6 +49,12 @@ NANO_GPT_KEY=your_api_key_here
 ## 🚀 Usage
 
 ### GUI Mode (Default)
+
+#### Windows
+
+Simply double-click `start.bat`
+
+#### Linux / macOS
 
 ```bash
 python main.py
