@@ -1048,8 +1048,12 @@ class App(ctk.CTk):
         if self.is_running:
             self.stop_event.set()
             if self.worker_process and self.worker_process.is_alive():
-                self.worker_process.terminate()
-                self.worker_process.join(timeout=1)
+                # Give the worker a few seconds to finish its current chunk
+                # and run the finally-block cleanup before forcing termination.
+                self.worker_process.join(timeout=5)
+                if self.worker_process.is_alive():
+                    self.worker_process.terminate()
+                    self.worker_process.join(timeout=1)
             self._stop_timer()
             self._finish_transcription("Stopped by user.")
 

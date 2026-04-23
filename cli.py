@@ -105,7 +105,11 @@ def main(path=None, filter_mode=None):
         print(f"│ [{idx}/{total_files}] {os.path.basename(filepath)[:52]:<52} │")
         print(f"└─────────────────────────────────────────────────────────────────┘")
 
-        elapsed, merged = transcribe(filepath)
+        try:
+            elapsed, merged = transcribe(filepath)
+        except KeyboardInterrupt:
+            print("\n\n🛑 Interrupted by user. Cleaning up...")
+            break
 
         # Construct output path
         basename = os.path.splitext(os.path.basename(filepath))[0]
@@ -116,7 +120,10 @@ def main(path=None, filter_mode=None):
         print()
 
     total_elapsed = (time.time() - start_time) / 60
-    print(f"🎉 All done! Processed {total_files} file(s) in {total_elapsed:.1f} minutes total")
+    if idx < total_files:
+        print(f"⏹️  Stopped. Processed {idx - 1} of {total_files} file(s) in {total_elapsed:.1f} minutes")
+    else:
+        print(f"🎉 All done! Processed {total_files} file(s) in {total_elapsed:.1f} minutes total")
     print(f"   Output saved to: {OUTPUT_DIR}")
 
 

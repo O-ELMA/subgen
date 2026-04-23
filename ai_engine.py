@@ -1,5 +1,11 @@
+import atexit
+import contextlib
+import glob
 import os
 import json
+import shutil
+import signal
+import sys
 import time
 import tempfile
 import threading
@@ -26,7 +32,51 @@ from config import (
 from subtitles_engine import make_subtitles
 
 
-def chunk_audio(audio_path):
+# ------------------------------------------------------------------------------
+# Cleanup helpers
+# ------------------------------------------------------------------------------
+
+def _cleanup_old_temp_files():
+    """Remove leftover chunk files / temp dirs from previous crashed runs."""
+    tmpdir = tempfile.gettempdir()
+    for old_chunk in glob.glob(os.path.join(tmpdir, "chunk_*.wav")):
+        try:
+            os.remove(old_chunk)
+        except OSError:
+            pass
+    for old_dir in glob.glob(os.path.join(tmpdir, "subgen_*")):
+        try:
+            shutil.rmtree(old_dir, ignore_errors=True)
+        except OSError:
+            pass
+
+
+_cleanup_old_temp_files()
+
+
+@contextlib.contextmanager
+def _temp_chunks_dir():
+    """Create a dedicated temp directory for chunk files and guarantee cleanup."""
+    tmpdir = tempfile.mkdtemp(prefix="subgen_")
+    try:
+        yield tmpdir
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def _install_cleanup_signals():
+    """Install SIGTERM/SIGINT handlers so finally blocks run on graceful kills."""
+    def _handler(signum, frame):
+        sys.exit(1)
+    signal.signal(signal.SIGTERM, _handler)
+    signal.signal(signal.SIGINT, _handler)
+
+
+# ------------------------------------------------------------------------------
+# Audio chunking
+# ------------------------------------------------------------------------------
+
+def chunk_audio(audio_path, temp_dir):
     audio = AudioSegment.from_file(audio_path)
     target_length = 3 * 60 * 1000
 
@@ -48,7 +98,7 @@ def chunk_audio(audio_path):
                 end = search_start + non_silent_ranges[-1][1] + 250
 
         chunk = audio[start:end]
-        chunk_path = os.path.join(tempfile.gettempdir(), f"chunk_{i}.wav")
+        chunk_path = os.path.join(temp_dir, f"chunk_{i}.wav")
         chunk.export(chunk_path, format="wav")
 
         chunks.append({"path": chunk_path, "duration_sec": len(chunk) / 1000.0})
@@ -185,91 +235,93 @@ def merge_results(processed_texts, realigned_timestamps):
 
 
 def transcribe(audio_path, progress_callback=None, stop_event=None):
+    _install_cleanup_signals()
     start_time = time.time()
 
     basename = os.path.splitext(os.path.basename(audio_path))[0]
 
-    if progress_callback:
-        progress_callback({"stage": "chunking"})
+    with _temp_chunks_dir() as temp_dir:
+        if progress_callback:
+            progress_callback({"stage": "chunking"})
 
-    chunks = chunk_audio(audio_path)
+        chunks = chunk_audio(audio_path, temp_dir)
 
-    if stop_event and stop_event.is_set():
-        raise InterruptedError("Transcription stopped by user.")
+        if stop_event and stop_event.is_set():
+            raise InterruptedError("Transcription stopped by user.")
 
-    if progress_callback:
-        progress_callback({"stage": "model_loading"})
+        if progress_callback:
+            progress_callback({"stage": "model_loading"})
 
-    model = Qwen3ASRModel.from_pretrained(
-        MODEL_ID,
-        dtype=torch.bfloat16,
-        device_map=DEVICE,
-        max_inference_batch_size=MAX_BATCH_SIZE,
-        max_new_tokens=MAX_NEW_TOKENS,
-        forced_aligner=ALIGNER_ID,
-        forced_aligner_kwargs=dict(
+        model = Qwen3ASRModel.from_pretrained(
+            MODEL_ID,
             dtype=torch.bfloat16,
             device_map=DEVICE,
-        ),
-    )
-
-    if progress_callback:
-        progress_callback({"stage": "model_loaded"})
-
-    all_results = []
-    total_chunks = len(chunks)
-    for i, chunk_info in enumerate(chunks, 1):
-        if stop_event and stop_event.is_set():
-            raise InterruptedError("Transcription stopped by user.")
-        if progress_callback:
-            progress_callback({"stage": "chunk", "current": i, "total": total_chunks})
-        print(f"🔉 Chunk [{i}/{total_chunks}]")
-        result = model.transcribe(
-            audio=chunk_info["path"],
-            language=LANGUAGE,
-            return_time_stamps=True,
+            max_inference_batch_size=MAX_BATCH_SIZE,
+            max_new_tokens=MAX_NEW_TOKENS,
+            forced_aligner=ALIGNER_ID,
+            forced_aligner_kwargs=dict(
+                dtype=torch.bfloat16,
+                device_map=DEVICE,
+            ),
         )
-        all_results.append(result)
 
-    time_offset = 0.0
-    processed_texts = []
-    realigned_timestamps = []
-    for i, (r, chunk_info) in enumerate(zip(all_results, chunks)):
-        if stop_event and stop_event.is_set():
-            raise InterruptedError("Transcription stopped by user.")
         if progress_callback:
-            progress_callback({"stage": "llm"})
-        t = r[0]
-        corrected = llm_call([
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": t.text},
-        ])
-        processed_texts.append(corrected)
+            progress_callback({"stage": "model_loaded"})
 
-        items = realign_timestamps(corrected, t.time_stamps.items, time_offset)
-        realigned_timestamps.append(items)
+        all_results = []
+        total_chunks = len(chunks)
+        for i, chunk_info in enumerate(chunks, 1):
+            if stop_event and stop_event.is_set():
+                raise InterruptedError("Transcription stopped by user.")
+            if progress_callback:
+                progress_callback({"stage": "chunk", "current": i, "total": total_chunks})
+            print(f"🔉 Chunk [{i}/{total_chunks}]")
+            result = model.transcribe(
+                audio=chunk_info["path"],
+                language=LANGUAGE,
+                return_time_stamps=True,
+            )
+            all_results.append(result)
 
-        time_offset += chunk_info["duration_sec"]
+        time_offset = 0.0
+        processed_texts = []
+        realigned_timestamps = []
+        for i, (r, chunk_info) in enumerate(zip(all_results, chunks)):
+            if stop_event and stop_event.is_set():
+                raise InterruptedError("Transcription stopped by user.")
+            if progress_callback:
+                progress_callback({"stage": "llm"})
+            t = r[0]
+            corrected = llm_call([
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": t.text},
+            ])
+            processed_texts.append(corrected)
 
-    merged = merge_results(processed_texts, realigned_timestamps)
+            items = realign_timestamps(corrected, t.time_stamps.items, time_offset)
+            realigned_timestamps.append(items)
 
-    if progress_callback:
-        progress_callback({"stage": "srt"})
+            time_offset += chunk_info["duration_sec"]
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    json_path = os.path.join(OUTPUT_DIR, f"{basename}.json")
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(merged, f, ensure_ascii=False, indent=2)
+        merged = merge_results(processed_texts, realigned_timestamps)
 
-    audio_dir = os.path.dirname(audio_path)
-    srt_path = os.path.join(audio_dir, f"{basename}.srt")
-    make_subtitles(merged["time_stamps"], srt_path)
+        if progress_callback:
+            progress_callback({"stage": "srt"})
 
-    if progress_callback:
-        progress_callback({"stage": "done"})
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        json_path = os.path.join(OUTPUT_DIR, f"{basename}.json")
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(merged, f, ensure_ascii=False, indent=2)
 
-    elapsed = (time.time() - start_time) / 60
-    return elapsed, merged
+        audio_dir = os.path.dirname(audio_path)
+        srt_path = os.path.join(audio_dir, f"{basename}.srt")
+        make_subtitles(merged["time_stamps"], srt_path)
+
+        if progress_callback:
+            progress_callback({"stage": "done"})
+
+        elapsed = (time.time() - start_time) / 60
+        return elapsed, merged
 
 
 def log_result(minutes):
