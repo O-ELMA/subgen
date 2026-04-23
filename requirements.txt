@@ -2,3 +2,5 @@ httpx
 torch
 pydub
 python-dotenv
+customtkinter
+tkinterdnd2

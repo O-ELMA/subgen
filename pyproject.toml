@@ -1,6 +1,6 @@
 [project]
 name = "SUBGEN"
-version = "1.0"
+version = "2.0"
 description = "Generate subtitles from audio/video files using AI-powered ASR"
 requires-python = ">=3.12"
 
