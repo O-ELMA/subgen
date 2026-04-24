@@ -32,12 +32,8 @@ from config import (
 from subtitles_engine import make_subtitles
 
 
-# ------------------------------------------------------------------------------
-# Cleanup helpers
-# ------------------------------------------------------------------------------
 
 def _cleanup_old_temp_files():
-    """Remove leftover chunk files / temp dirs from previous crashed runs."""
     tmpdir = tempfile.gettempdir()
     for old_chunk in glob.glob(os.path.join(tmpdir, "chunk_*.wav")):
         try:
@@ -56,7 +52,6 @@ _cleanup_old_temp_files()
 
 @contextlib.contextmanager
 def _temp_chunks_dir():
-    """Create a dedicated temp directory for chunk files and guarantee cleanup."""
     tmpdir = tempfile.mkdtemp(prefix="subgen_")
     try:
         yield tmpdir
@@ -65,20 +60,16 @@ def _temp_chunks_dir():
 
 
 def _install_cleanup_signals():
-    """Install SIGTERM/SIGINT handlers so finally blocks run on graceful kills."""
     def _handler(signum, frame):
         sys.exit(1)
     signal.signal(signal.SIGTERM, _handler)
     signal.signal(signal.SIGINT, _handler)
 
 
-# ------------------------------------------------------------------------------
-# Audio chunking
-# ------------------------------------------------------------------------------
 
 def chunk_audio(audio_path, temp_dir):
     audio = AudioSegment.from_file(audio_path)
-    target_length = 3 * 60 * 1000
+    target_length = 3 * 60 * 1000  # 3 minutes in milliseconds
 
     chunks = []
     start = 0

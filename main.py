@@ -38,13 +38,10 @@ def print_cli_usage():
 
 
 def parse_cli_args(args):
-    """Parse CLI arguments with helpful error messages."""
-    # Check for help flags (can be anywhere)
     if "-h" in args or "--help" in args or "help" in args:
         print_cli_usage()
         sys.exit(0)
 
-    # Check for conflicting flags
     if "--audio" in args and "--video" in args:
         print("❌ Error: Cannot use both --audio and --video at the same time.")
         print("   Choose one to filter by file type, or use neither to process all files.")
@@ -54,7 +51,6 @@ def parse_cli_args(args):
     filter_mode = None
     unknown_args = []
 
-    # First pass: identify all flags and collect non-flag arguments
     non_flag_args = []
     for arg in args:
         if arg == "--audio":
@@ -66,14 +62,12 @@ def parse_cli_args(args):
         else:
             non_flag_args.append(arg)
 
-    # Handle the path (first non-flag argument)
     if len(non_flag_args) == 1:
         path = non_flag_args[0]
     elif len(non_flag_args) > 1:
         path = non_flag_args[0]
         unknown_args.extend(non_flag_args[1:])
 
-    # Handle unknown arguments with helpful messages
     if unknown_args:
         print(f"❌ Unknown argument(s): {', '.join(unknown_args)}")
         print()
@@ -91,7 +85,6 @@ def parse_cli_args(args):
         print_cli_usage()
         sys.exit(1)
 
-    # Validate path was provided for CLI mode
     if path is None:
         print("❌ Error: No path provided.")
         print()
@@ -100,7 +93,6 @@ def parse_cli_args(args):
         print_cli_usage()
         sys.exit(1)
 
-    # Expand user paths like ~/Documents
     path = os.path.expanduser(path)
 
     if not os.path.exists(path):
@@ -119,7 +111,6 @@ def parse_cli_args(args):
 
 
 def run_gui_mode():
-    """Launch the GUI application."""
     try:
         from gui import run_gui
         run_gui()
@@ -137,26 +128,21 @@ def run_gui_mode():
 
 
 def run_cli_mode(path, filter_mode):
-    """Run the CLI application."""
     from cli import main as cli_main
     cli_main(path, filter_mode)
 
 
 def main():
-    # Skip the script name, get actual arguments
     args = sys.argv[1:]
 
-    # If no arguments provided, launch GUI mode
     if not args:
         run_gui_mode()
         return
 
-    # Check for help flags first
     if args[0] in ("-h", "--help"):
         print_cli_usage()
         sys.exit(0)
 
-    # We have arguments - run CLI mode (parse_cli_args will handle validation)
     path, filter_mode = parse_cli_args(args)
     run_cli_mode(path, filter_mode)
 

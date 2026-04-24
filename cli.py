@@ -11,7 +11,6 @@ from ai_engine import transcribe
 
 
 def _collect_files(path, filter_mode):
-    """Collect audio/video files from a path."""
     path = os.path.abspath(path)
 
     if os.path.isfile(path):
@@ -69,34 +68,23 @@ def _collect_files(path, filter_mode):
 
         return files
 
-    # This shouldn't happen due to earlier validation, but just in case
     print(f"❌ Error: Cannot access path '{path}'")
     sys.exit(1)
 
 
 def main(path=None, filter_mode=None):
-    """
-    Main CLI entry point.
-
-    Args:
-        path: Path to file or directory (from main.py arg parser)
-        filter_mode: 'audio', 'video', or None
-    """
-    # If called directly without args (e.g., python cli.py), show usage
     if path is None:
         print("╔══════════════════════════════════════════════════════════════════╗")
         print("║  This is the CLI module. Run via: python main.py <path>          ║")
         print("╚══════════════════════════════════════════════════════════════════╝")
         sys.exit(1)
 
-    # Collect files to process
     files = _collect_files(path, filter_mode)
 
     print(f"🎯 Found {len(files)} file(s) to process")
     print(f"📂 Output directory: {OUTPUT_DIR}")
     print()
 
-    # Process each file
     total_files = len(files)
     start_time = time.time()
 
@@ -111,7 +99,6 @@ def main(path=None, filter_mode=None):
             print("\n\n🛑 Interrupted by user. Cleaning up...")
             break
 
-        # Construct output path
         basename = os.path.splitext(os.path.basename(filepath))[0]
         srt_path = os.path.join(os.path.dirname(filepath), f"{basename}.srt")
 
@@ -128,7 +115,6 @@ def main(path=None, filter_mode=None):
 
 
 if __name__ == "__main__":
-    # Direct execution without arguments - show helpful message
     print("╔══════════════════════════════════════════════════════════════════╗")
     print("║  This is the CLI module. Run via: python main.py <path>          ║")
     print("╚══════════════════════════════════════════════════════════════════╝")

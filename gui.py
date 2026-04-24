@@ -39,9 +39,6 @@ MEDIA_FILETYPES = [
 ]
 
 
-# =============================================================================
-# THEME
-# =============================================================================
 THEME = {
     # Backgrounds
     "bg": "#1a1b26",
@@ -77,13 +74,11 @@ THEME = {
 
 
 def _font(size=13, weight="normal", mono=False):
-    """Build a CTkFont using the theme typeface."""
     family = THEME["font_mono"] if mono else THEME["font_family"]
     return ctk.CTkFont(family=family, size=size, weight=weight)
 
 
 class _SegmentedButton(ctk.CTkFrame):
-    """Custom segmented button with independent text colors for selected/unselected states."""
 
     def __init__(self, master, values, command=None, **kwargs):
         fg = kwargs.pop("fg_color", THEME["surface"])
@@ -159,7 +154,6 @@ class _SegmentedButton(ctk.CTkFrame):
 
 
 def _collect_files(path, filter_mode):
-    """Collect media files from a path based on filter mode."""
     path = os.path.abspath(path)
 
     if os.path.isfile(path):
@@ -186,7 +180,6 @@ def _collect_files(path, filter_mode):
 
 
 def _estimate_processing_time(path):
-    """Estimate processing time in seconds (3 min processing per 1 min audio)."""
     try:
         from pydub.utils import mediainfo_json
         info = mediainfo_json(path)
@@ -221,9 +214,6 @@ def _transcribe_worker(files, result_queue, stop_event, total_files):
     result_queue.put(("all_done", None))
 
 
-# =============================================================================
-# APP
-# =============================================================================
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -240,7 +230,6 @@ class App(ctk.CTk):
         self.minsize(950, 750)
         self.configure(fg_color=THEME["bg"])
 
-        # --- State -----------------------------------------------------------
         self.mode = "Folder"          # "Folder" or "Files"
         self.folder_path = ""
         self.folder_files = []        # curated list of files from folder
@@ -254,21 +243,14 @@ class App(ctk.CTk):
         self.total_files = 0
         self.timer_id = None
 
-        # --- Build UI --------------------------------------------------------
         self._create_widgets()
         self._setup_layout()
 
-        # --- Start polling queue ---------------------------------------------
         self.after(100, self._poll_queue)
 
-    # ------------------------------------------------------------------
-    # Widget creation
-    # ------------------------------------------------------------------
     def _create_widgets(self):
-        # -- Root container (transparent, handles padding) -------------------
         self.container = ctk.CTkFrame(self, fg_color="transparent")
 
-        # -- Header -----------------------------------------------------------
         self.header_frame = ctk.CTkFrame(self.container, fg_color="transparent")
         self.title_label = ctk.CTkLabel(
             self.header_frame,
@@ -298,7 +280,6 @@ class App(ctk.CTk):
         )
         self.mode_segment.set("Folder Mode")
 
-        # -- Main Card --------------------------------------------------------
         self.main_card = ctk.CTkFrame(
             self.container,
             fg_color=THEME["card"],
@@ -309,12 +290,10 @@ class App(ctk.CTk):
         self.main_card.grid_columnconfigure(0, weight=1)
         self.main_card.grid_rowconfigure(0, weight=1)
 
-        # Content frame inside main card
         self.content_frame = ctk.CTkFrame(self.main_card, fg_color="transparent")
         self.content_frame.grid_columnconfigure(0, weight=1)
         self.content_frame.grid_rowconfigure(0, weight=1)
 
-        # -- Folder mode widgets ----------------------------------------------
         self.folder_frame = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.folder_frame.grid_columnconfigure(0, weight=0)
         self.folder_frame.grid_columnconfigure(1, weight=1)
@@ -393,7 +372,6 @@ class App(ctk.CTk):
             scrollbar_button_hover_color=THEME["text_secondary"],
         )
 
-        # -- Files mode widgets -----------------------------------------------
         self.files_frame = ctk.CTkFrame(self.content_frame, fg_color="transparent")
         self.files_frame.grid_columnconfigure(0, weight=0)
         self.files_frame.grid_columnconfigure(1, weight=1)
@@ -448,7 +426,6 @@ class App(ctk.CTk):
             text_color=THEME["text_secondary"],
         )
 
-        # -- Progress Card ----------------------------------------------------
         self.progress_card = ctk.CTkFrame(
             self.container,
             fg_color=THEME["card"],
@@ -517,7 +494,6 @@ class App(ctk.CTk):
             scrollbar_button_hover_color=THEME["text_secondary"],
         )
 
-        # -- Action Frame -----------------------------------------------------
         self.action_frame = ctk.CTkFrame(self.container, fg_color="transparent")
         self.action_frame.grid_columnconfigure(0, weight=1)
 
@@ -548,32 +524,24 @@ class App(ctk.CTk):
             state="disabled",
         )
 
-    # ------------------------------------------------------------------
-    # Layout
-    # ------------------------------------------------------------------
     def _setup_layout(self):
-        # Root grid
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Container
         self.container.grid(row=0, column=0, sticky="nsew", padx=40, pady=30)
         self.container.grid_columnconfigure(0, weight=1)
         self.container.grid_rowconfigure(1, weight=1)  # main card expands
         self.container.grid_rowconfigure(2, weight=0)
 
-        # Header
         self.header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 20))
         self.header_frame.grid_columnconfigure(0, weight=1)
         self.title_label.grid(row=0, column=0, sticky="w")
         self.subtitle_label.grid(row=1, column=0, sticky="w", pady=(2, 0))
         self.mode_segment.grid(row=0, column=1, rowspan=2, sticky="e")
 
-        # Main Card
         self.main_card.grid(row=1, column=0, sticky="nsew", pady=(0, 20))
         self.content_frame.grid(row=0, column=0, sticky="nsew", padx=THEME["pad_large"], pady=THEME["pad_large"])
 
-        # Folder mode layout
         self.folder_drop_frame.grid(row=0, column=0, sticky="new", pady=(0, 12))
         self.folder_drop_icon.pack(expand=True, pady=(20, 4))
         self.folder_drop_label.pack()
@@ -583,7 +551,6 @@ class App(ctk.CTk):
         self.folder_count_label.grid(row=3, column=0, sticky="w", pady=(4, 0))
         self.folder_list_frame.grid(row=0, column=1, rowspan=4, sticky="nsew", padx=(20, 0))
 
-        # Files mode layout
         self.files_drop_frame.grid(row=0, column=0, sticky="new", pady=(0, 12))
         self.files_drop_icon.pack(expand=True, pady=(20, 4))
         self.files_drop_label.pack()
@@ -593,7 +560,6 @@ class App(ctk.CTk):
 
         self._show_folder_mode()
 
-        # Progress Card
         self.progress_card.grid(row=2, column=0, sticky="ew", pady=(0, 20))
         self.status_label.grid(row=0, column=0, padx=(THEME["pad_large"], 12), pady=(THEME["pad_large"], 8), sticky="w")
         self.timer_label.grid(row=0, column=1, padx=(0, THEME["pad_large"]), pady=(THEME["pad_large"], 8), sticky="e")
@@ -603,26 +569,22 @@ class App(ctk.CTk):
         self.current_progress_bar.grid(row=2, column=1, padx=(0, THEME["pad_large"]), pady=6, sticky="ew")
         self.log_textbox.grid(row=3, column=0, columnspan=2, padx=THEME["pad_large"], pady=(10, THEME["pad_large"]), sticky="ew")
 
-        # Action buttons
         self.action_frame.grid(row=3, column=0, sticky="ew")
         self.action_frame.grid_columnconfigure(0, weight=1)
         self.action_frame.grid_columnconfigure(3, weight=1)
         self.transcribe_button.grid(row=0, column=1, padx=8)
         self.stop_button.grid(row=0, column=2, padx=8)
 
-        # -- Bindings ---------------------------------------------------------
         self.folder_drop_frame.bind("<Button-1>", lambda e: self._browse_folder())
         self.folder_drop_label.bind("<Button-1>", lambda e: self._browse_folder())
         self.folder_path_label.bind("<Button-1>", lambda e: self._browse_folder())
         self.files_drop_frame.bind("<Button-1>", lambda e: self._browse_files())
         self.files_drop_label.bind("<Button-1>", lambda e: self._browse_files())
 
-        # Drop hover effects
         for drop_frame in (self.folder_drop_frame, self.files_drop_frame):
             drop_frame.bind("<Enter>", lambda e, f=drop_frame: f.configure(border_color=THEME["border_hover"]))
             drop_frame.bind("<Leave>", lambda e, f=drop_frame: f.configure(border_color=THEME["border"]))
 
-        # Drag and drop
         if TKDND_AVAILABLE:
             try:
                 self.drop_target_register(tkinterdnd2.DND_FILES)
@@ -630,9 +592,6 @@ class App(ctk.CTk):
             except Exception as e:
                 self._log(f"Drag and drop initialization failed: {e}")
 
-    # ------------------------------------------------------------------
-    # Mode switching
-    # ------------------------------------------------------------------
     def _show_folder_mode(self):
         self.folder_frame.grid(row=0, column=0, sticky="nsew")
         self.files_frame.grid_forget()
@@ -655,7 +614,6 @@ class App(ctk.CTk):
             self._update_folder_count()
 
     def _set_ui_locked(self, locked):
-        """Lock or unlock UI components during transcription."""
         state = "disabled" if locked else "normal"
         self.mode_segment.configure_state(state)
         self.folder_filter_segment.configure_state(state)
@@ -697,9 +655,6 @@ class App(ctk.CTk):
             self.files_drop_frame.bind("<Button-1>", lambda e: self._browse_files())
             self.files_drop_label.bind("<Button-1>", lambda e: self._browse_files())
 
-    # ------------------------------------------------------------------
-    # File handling
-    # ------------------------------------------------------------------
     def _browse_folder(self):
         if self.is_running:
             return
@@ -907,18 +862,12 @@ class App(ctk.CTk):
 
         return paths
 
-    # ------------------------------------------------------------------
-    # Logging
-    # ------------------------------------------------------------------
     def _log(self, msg):
         self.log_textbox.configure(state="normal")
         self.log_textbox.insert("end", msg + "\n")
         self.log_textbox.see("end")
         self.log_textbox.configure(state="disabled")
 
-    # ------------------------------------------------------------------
-    # Transcription control
-    # ------------------------------------------------------------------
     def _start_transcription(self):
         if self.is_running:
             return
@@ -1137,12 +1086,8 @@ class App(ctk.CTk):
         top.after(4000, top.destroy)
 
 
-# =============================================================================
-# Entry point
-# =============================================================================
 def run_gui():
-    """Entry point to run the GUI application."""
-    ctk.set_appearance_mode("System")  # Respect OS dark/light setting
+    ctk.set_appearance_mode("System")
     ctk.set_default_color_theme("dark-blue")
 
     app = App()
@@ -1151,7 +1096,6 @@ def run_gui():
 
 if __name__ == "__main__":
     if os.environ.get("_SUBGEN_WORKER"):
-        # Inside a multiprocessing worker process; do not start the GUI.
         pass
     else:
         run_gui()
