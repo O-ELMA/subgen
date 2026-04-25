@@ -203,13 +203,7 @@ if not defined NANO_KEY_FOUND (
 echo Launching Subgen GUI ...
 echo.
 set PYTHONIOENCODING=utf-8
-python main.py
-
-if !errorlevel! neq 0 (
-    echo.
-    echo Program exited with an error.
-    pause
-)
+pythonw main.py
 
 endlocal
-exit /b 0
+exit
