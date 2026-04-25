@@ -3,20 +3,6 @@
 run() {
     set -e
 
-    if [ ! -f .env ]; then
-        echo ""
-        echo "════════════════════════════════════════════════"
-        echo ""
-        echo "Paste your NanoGPT API key (leave empty to skip):"
-        read -r USER_KEY
-
-        if [ -n "$USER_KEY" ]; then
-            echo "NANO_GPT_KEY=$USER_KEY" > .env
-        else
-            echo "NANO_GPT_KEY=" > .env
-        fi
-    fi
-
     echo ""
     echo "════════════════════════════════════════════════"
     echo ""
