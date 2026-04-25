@@ -6,6 +6,9 @@ import queue
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
+import config
+from utils import ensure_api_key
+
 try:
     import tkinter
     import tkinterdnd2
@@ -591,6 +594,127 @@ class App(ctk.CTk):
                 self.dnd_bind('<<Drop>>', self._on_drop)
             except Exception as e:
                 self._log(f"Drag and drop initialization failed: {e}")
+
+        # Check for API key and prompt if missing (after layout is set up)
+        self.after(100, self._check_and_prompt_api_key)
+
+    def _check_and_prompt_api_key(self):
+        """Check if API key exists and show modal dialog if missing."""
+        if not config.NANOGPT_API_KEY:
+            try:
+                ensure_api_key(self._show_api_key_dialog)
+            except ValueError as e:
+                messagebox.showerror("Error", str(e))
+
+    def _show_api_key_dialog(self):
+        """Show modal dialog to prompt for API key."""
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("API Key Required")
+        dialog.geometry("420x200")
+        dialog.resizable(False, False)
+        dialog.configure(fg_color=THEME["bg"])
+        dialog.transient(self)
+        dialog.grab_set()
+
+        # Center the dialog on the parent window
+        dialog.update_idletasks()
+        parent_x = self.winfo_x()
+        parent_y = self.winfo_y()
+        parent_width = self.winfo_width()
+        parent_height = self.winfo_height()
+        dialog_width = 420
+        dialog_height = 200
+        x = parent_x + (parent_width - dialog_width) // 2
+        y = parent_y + (parent_height - dialog_height) // 2
+        dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+
+        # Prevent closing via X button without entering a key
+        def on_close():
+            # Don't allow closing if key is still empty
+            pass
+
+        dialog.protocol("WM_DELETE_WINDOW", on_close)
+
+        # Warning label
+        warning_label = ctk.CTkLabel(
+            dialog,
+            text="⚠️  NANO_GPT_KEY not found in .env",
+            font=_font(size=14, weight="bold"),
+            text_color=THEME["accent_pink"],
+        )
+        warning_label.pack(pady=(20, 10))
+
+        # Instructions
+        instructions_label = ctk.CTkLabel(
+            dialog,
+            text="Please enter your Nano-GPT API key to continue:",
+            font=_font(size=12),
+            text_color=THEME["text_secondary"],
+        )
+        instructions_label.pack(pady=(0, 10))
+
+        # API Key entry
+        key_var = tk.StringVar()
+        key_entry = ctk.CTkEntry(
+            dialog,
+            textvariable=key_var,
+            width=360,
+            height=36,
+            font=_font(size=12),
+            fg_color=THEME["input"],
+            text_color=THEME["text_primary"],
+            border_color=THEME["border"],
+            border_width=1,
+            corner_radius=THEME["corner_radius_small"],
+            show="•",
+        )
+        key_entry.pack(pady=(0, 20))
+        key_entry.focus()
+
+        # Error label (for validation)
+        error_label = ctk.CTkLabel(
+            dialog,
+            text="",
+            font=_font(size=11),
+            text_color=THEME["accent_pink"],
+        )
+        error_label.pack(pady=(0, 10))
+
+        result = None
+
+        def save_key():
+            nonlocal result
+            key = key_var.get().strip()
+            if not key:
+                error_label.configure(text="API key cannot be empty. Please enter a valid key.")
+                return
+
+            result = key
+            # Close dialog
+            dialog.destroy()
+
+        # Save button
+        save_button = ctk.CTkButton(
+            dialog,
+            text="Save",
+            command=save_key,
+            font=_font(size=13, weight="bold"),
+            fg_color=THEME["accent_teal"],
+            hover_color="#9de0ff",
+            text_color=THEME["bg"],
+            width=120,
+            height=34,
+            corner_radius=THEME["corner_radius_small"],
+        )
+        save_button.pack(pady=(0, 20))
+
+        # Bind Enter key to save
+        key_entry.bind("<Return>", lambda e: save_key())
+
+        # Wait for dialog to close (modal behavior)
+        self.wait_window(dialog)
+
+        return result
 
     def _show_folder_mode(self):
         self.folder_frame.grid(row=0, column=0, sticky="nsew")

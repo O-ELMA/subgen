@@ -8,6 +8,17 @@ from config import (
     OUTPUT_DIR,
 )
 from ai_engine import transcribe
+from utils import ensure_api_key
+
+
+def _get_api_key_from_user():
+    """Prompt user for API key in CLI and return it."""
+    print("⚠️  NANO_GPT_KEY not found in .env")
+    while True:
+        key = input("Please enter your Nano-GPT API key: ").strip()
+        if key:
+            return key
+        print("API key cannot be empty. Please try again.")
 
 
 def _collect_files(path, filter_mode):
@@ -78,6 +89,11 @@ def main(path=None, filter_mode=None):
         print("║  This is the CLI module. Run via: python main.py <path>          ║")
         print("╚══════════════════════════════════════════════════════════════════╝")
         sys.exit(1)
+
+    # Check for API key and prompt if missing
+    ensure_api_key(_get_api_key_from_user)
+    print("✅ API key saved to .env")
+    print()
 
     files = _collect_files(path, filter_mode)
 
